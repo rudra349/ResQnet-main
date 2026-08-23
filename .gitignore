@@ -1,0 +1,81 @@
+# ========================
+# Environment & Secrets
+# ========================
+.env
+.env.local
+.env.production
+.env.*.local
+*.pem
+*.key
+
+# ========================
+# Node / Next.js
+# ========================
+node_modules/
+.next/
+out/
+build/
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+.swc/
+
+# ========================
+# Python / Backend
+# ========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+*.egg-info/
+dist/
+.eggs/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+*.log
+
+# ========================
+# Alembic
+# ========================
+# Keep migrations, ignore pyc inside
+backend/alembic/__pycache__/
+
+# ========================
+# AWS
+# ========================
+.aws/credentials
+*.pem
+
+# ========================
+# OS
+# ========================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ========================
+# IDE
+# ========================
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ========================
+# Evidence uploads (local mock)
+# ========================
+backend/uploads/
+infra/aws/report_analyzer/__pycache__/
+
+# ========================
+# Docker
+# ========================
+.dockerignore
