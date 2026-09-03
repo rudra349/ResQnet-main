@@ -31,7 +31,7 @@ When natural disasters like floods, hurricanes, or earthquakes strike, cellular 
 - **Unified SQL + Vector Store:** CockroachDB stores both relational crisis data and high-dimensional vector embeddings natively, using C-SPANN distributed indexing and the `<->` cosine distance operator for semantic search.
 - **Interactive Crisis Command Map:** Real-time geospatial visualization of incidents, shelters, hospitals, supply depots, and relief teams using Leaflet with CartoDB dark tiles.
 - **Real-Time Geocoded Location Search:** Uber/Rapido-style free-text location search when reporting incidents — search any city, road, landmark, or address globally and pin it on the crisis map.
-- **Multi-Provider AI Engine:** Pluggable AI providers supporting Google Gemini (gemini-3.6-flash + gemini-embedding-001) and Amazon Bedrock (Claude 3 Haiku + Titan Embeddings v2), with automatic fallback to a deterministic mock provider for testing without credentials.
+- **Google Gemini AI Engine:** Powered by Google Gemini (gemini-3.6-flash + gemini-embedding-001) for intelligent tool calling and vector embeddings, with a deterministic mock provider fallback for testing without API keys.
 - **JWT Authentication:** Secure user authentication with role-based access (field worker, coordinator, hospital, admin) using bcrypt password hashing and JWT tokens.
 - **16+ Database Models:** Comprehensive data model covering organizations, users, incidents, reports, resources, shelters, hospitals, relief teams, alerts, memories, decisions, evidence, sync operations, audit logs, and more.
 
@@ -64,10 +64,10 @@ When natural disasters like floods, hurricanes, or earthquakes strike, cellular 
                 ┌───────────┘         └──────────────┐
                 ▼                                    ▼
        ┌──────────────────┐                ┌──────────────────┐
-       │   AI Agent        │               │   Amazon S3      │
-       │   (Tool Loop)     │               │   Evidence & Media│
-       │   10 Tools        │               │   (Local Mock)   │
-       │   Gemini/Bedrock  │               └──────────────────┘
+       │   AI Agent        │               │   Local File     │
+       │   (Tool Loop)     │               │   Evidence Storage│
+       │   10 Tools        │               │   (Uploads Dir)  │
+       │   Google Gemini   │               └──────────────────┘
        └────────┬──────────┘
                 │
                 │  Query & persist memory
@@ -156,12 +156,7 @@ Every agent interaction is persisted as a `Decision` record and a corresponding 
 
 ### AI & ML
 - **Google Gemini** (gemini-3.6-flash for chat, gemini-embedding-001 for 768-D embeddings) via `google-genai` SDK
-- **Amazon Bedrock** (Claude 3 Haiku for chat, Titan Embeddings v2 for 1536-D embeddings) via `boto3`
 - **Mock Provider** for testing/CI without API credentials (deterministic hash-based pseudo-embeddings)
-
-### Storage & Cloud
-- **Amazon S3** for evidence/media uploads (with local filesystem mock for development)
-- **AWS Lambda** for async report analysis (with inline mock for development)
 
 ---
 
@@ -185,7 +180,7 @@ cd ResQnet-main
 
 # 2. Set up environment variables
 cp .env.example .env
-# Edit .env — at minimum, set your GEMINI_API_KEY
+# Edit .env — set your GEMINI_API_KEY
 
 # 3. Build and launch all containers (CockroachDB + Backend + Frontend)
 docker compose up --build
@@ -281,12 +276,10 @@ Key variables in `.env` (see [`.env.example`](.env.example) for the full list):
 | Variable | Description | Default |
 |---|---|---|
 | `DATABASE_URL` | CockroachDB connection string | `postgresql+asyncpg://root@localhost:26257/resqnet` |
-| `AI_PROVIDER` | AI backend: `gemini` or `bedrock` | `gemini` |
+| `AI_PROVIDER` | AI backend | `gemini` |
 | `GEMINI_API_KEY` | Google Gemini API key ([get one free](https://aistudio.google.com/app/apikey)) | *(required for AI)* |
 | `GEMINI_MODEL` | Gemini chat model | `gemini-3.6-flash` |
-| `EMBEDDING_DIM` | Embedding vector dimension (768 for Gemini, 1536 for Titan) | `768` |
-| `USE_S3_MOCK` | Use local filesystem instead of real S3 | `true` |
-| `USE_LAMBDA_MOCK` | Process reports inline instead of invoking Lambda | `true` |
+| `EMBEDDING_DIM` | Embedding vector dimension (768 for Gemini) | `768` |
 | `NEXT_PUBLIC_API_URL` | Backend URL for the frontend | `http://localhost:8000` |
 
 ---
@@ -311,16 +304,16 @@ Here's a walkthrough simulating a live flood crisis:
 ResQnet-main/
 ├── backend/                      # FastAPI Application
 │   ├── app/
-│   │   ├── agents/               # AI agent, LLM providers (Gemini/Bedrock/Mock), 10 tools
+│   │   ├── agents/               # AI agent, LLM providers (Gemini/Mock), 10 tools
 │   │   │   ├── agent.py          # Tool-calling loop: retrieve → reason → recommend → store
-│   │   │   ├── provider.py       # AIProvider ABC + Gemini, Bedrock, Mock implementations
+│   │   │   ├── provider.py       # AIProvider ABC + Gemini, Mock implementations
 │   │   │   └── tools.py          # 10 tool definitions & executors
 │   │   ├── api/                  # 12 REST API routers
 │   │   │   ├── agent.py          # POST /agent/chat
 │   │   │   ├── alerts.py         # CRUD alerts
 │   │   │   ├── auth.py           # Register/login, JWT tokens
 │   │   │   ├── dashboard.py      # GET /dashboard/summary
-│   │   │   ├── evidence.py       # File uploads (S3 / local mock)
+│   │   │   ├── evidence.py       # File uploads
 │   │   │   ├── incidents.py      # CRUD incidents with memory creation
 │   │   │   ├── locations.py      # CRUD locations
 │   │   │   ├── memories.py       # Memory retrieval API
@@ -329,7 +322,6 @@ ResQnet-main/
 │   │   │   ├── resources.py      # Resource inventory management
 │   │   │   └── sync.py           # Batch sync endpoint (idempotent)
 │   │   ├── auth/                 # JWT + bcrypt auth utilities
-│   │   ├── aws/                  # S3 storage & Lambda client (with mock modes)
 │   │   ├── db/                   # SQLAlchemy engine, CockroachDB compatibility, 16+ models
 │   │   ├── memory/               # Vector embeddings & similarity retrieval
 │   │   ├── schemas/              # Pydantic request/response schemas
@@ -337,7 +329,7 @@ ResQnet-main/
 │   │   ├── config.py             # pydantic-settings configuration
 │   │   └── main.py               # FastAPI app entrypoint & lifespan
 │   ├── tests/                    # pytest test suite
-│   ├── uploads/                  # Local S3 mock storage directory
+│   ├── uploads/                  # Local media storage directory
 │   └── requirements.txt          # Python dependencies
 ├── frontend/                     # Next.js 16 PWA
 │   ├── app/                      # App Router pages
@@ -371,9 +363,6 @@ ResQnet-main/
 ├── docs/                         # Architecture & demo documentation
 │   ├── architecture.md
 │   └── demo.md
-├── infra/                        # Cloud infrastructure
-│   └── aws/
-│       └── report_analyzer/      # Lambda function for async report analysis
 ├── scripts/
 │   └── seed_demo_data.py         # Database seeding script (30KB+ of demo data)
 ├── docker-compose.yml            # CockroachDB + Backend + Frontend orchestration
@@ -391,8 +380,6 @@ ResQnet-main/
 cd backend
 pytest tests/ -v
 ```
-
-Tests cover database connectivity, Gemini API integration, and sync operations.
 
 ---
 
